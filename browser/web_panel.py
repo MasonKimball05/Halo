@@ -167,9 +167,14 @@ class WebPanel(QFrame):
         self.fit()
 
     def fit(self):
-        """Its width: WIDTH, or less in a narrow window, so the page beside it keeps the larger share."""
-        room = self.browser.content_wrap.width() - STRIP - 6 - 16
-        self.setFixedWidth(max(MIN_WIDTH, min(WIDTH, round(room * 0.4))) + STRIP + 6)
+        """Its width: WIDTH, or less in a narrow window, so the page beside it keeps the larger share (and never
+        under PAGE_MIN: anything else beside it, Ask About This Page, comes off the room first)."""
+        layout = self.browser.content_layout
+        others = sum(w.width() + layout.spacing() for w in (layout.itemAt(i).widget() for i in range(layout.count()))
+                     if w is not None and w is not self and w is not self.browser.content and not w.isHidden())
+        room = self.browser.content_wrap.width() - others - STRIP - 6 - 16
+        width = min(WIDTH, round(room * 0.4), room - self.browser.PAGE_MIN)
+        self.setFixedWidth(max(MIN_WIDTH, width) + STRIP + 6)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

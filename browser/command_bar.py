@@ -162,6 +162,8 @@ def matches_query(query: str, title: str, url: str) -> bool:
 
 ROW_HEIGHT = 42
 MAX_ROWS = 8
+MIN_ROWS = 3  # (however short the window)
+BOTTOM_ROOM = 16  # (kept clear below the panel)
 
 _DOMAIN = re.compile(r"^([\w-]+\.)+[a-z]{2,}(:\d+)?([/?#].*)?$", re.IGNORECASE)
 _LOCAL = re.compile(r"^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?([/?#].*)?$", re.IGNORECASE)
@@ -405,7 +407,10 @@ class CommandBar(QWidget):
     def _place_panel(self):
         width = min(660, self.width() - 80)
         answering = self.answer.isVisible()
-        rows = 0 if answering else min(self.list.count(), MAX_ROWS)
+        top = int(self.height() * 0.17)
+        # As many rows as fit above the window's bottom edge (a short window: fewer, the rest scrolled to)
+        room = (self.height() - top - BOTTOM_ROOM - self.input.sizeHint().height() - 13) // ROW_HEIGHT
+        rows = 0 if answering else min(self.list.count(), MAX_ROWS, max(MIN_ROWS, room))
         list_h = rows * ROW_HEIGHT + 12 if rows else 0
         self.list.setFixedHeight(list_h)
         self.list.setVisible(bool(rows))
@@ -413,7 +418,7 @@ class CommandBar(QWidget):
         body_h = self.answer.height() if answering else list_h
         height = self.input.sizeHint().height() + (body_h + 1 if body_h else 0)
         drop = round((1 - self._intro) * 12)  # arriving, it drifts down the last few points
-        self.panel.setGeometry((self.width() - width) // 2, int(self.height() * 0.17) - drop, width, height)
+        self.panel.setGeometry((self.width() - width) // 2, top - drop, width, height)
         self.update()  # (its shadow, drawn here, goes where it goes)
 
     def paintEvent(self, event):

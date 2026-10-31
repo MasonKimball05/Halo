@@ -655,6 +655,102 @@ def test_a_shortcut_can_be_changed_in_settings(window, monkeypatch):
     assert shortcuts.portable(item["File › Share…"].shortcut()) == ""
 
 
+def test_a_video_keeps_playing_in_the_mini_player_when_you_leave_its_tab(window, site):
+    from PyQt6.QtCore import QEvent, QPointF
+    from PyQt6.QtGui import QEnterEvent
+    from browser import mini_player
+    player = window.mini_player
+    # (made ahead, off the screen: a test window mustn't float over yours)
+    player.window = mini_player.MiniPlayerWindow(player)
+    player.window.setStyleSheet(mini_player.stylesheet(window.theme) + mini_player.MINI_STYLE)
+    player.window.move(-4000, -4000)
+    video = open_page(window, f"{site}/video.html")  # (a video with sound, made in the page)
+    assert wait_until(lambda: window.tab_audio(video)[0], 5)
+    other = open_page(window, f"{site}/index.html")  # leaving it: it floats, just the video
+    assert wait_until(lambda: player.tab is video and player.window.isVisible(), 5)
+    assert video.view.parentWidget() is player.window
+    assert wait_until(lambda: run_js(video.view, "!!document.getElementById('pb-mini-style')"), 3)
+    assert player.window.title.text() == "Video Tab"
+    import sys
+    if sys.platform == "darwin":  # rounded like Arc's, the page in it too (macOS clips it: its style can't)
+        from browser import macos
+        assert macos.window_rounding(player.window) == (mini_player.RADIUS, True, False)
+        assert macos.window_border(player.window) == (1.0, mini_player.BORDER)  # (and a light edge just inside)
+
+    controls = player.window.controls
+    at = QPointF(50, 50)
+    QApplication.sendEvent(player.window, QEnterEvent(at, at, at))  # pointing at it: its controls fade in…
+    assert controls.isVisible() and player.window.transport.isVisible()
+    assert wait_until(lambda: controls.graphicsEffect().opacity() == 1.0, 2)
+    QApplication.sendEvent(player.window, QEvent(QEvent.Type.Leave))  # …and out
+    pause(0.05)
+    assert controls.isVisible() and controls.graphicsEffect().opacity() < 1.0  # (on its way, not gone at once)
+    assert wait_until(lambda: not controls.isVisible(), 2)
+
+    controls_ = player.window
+    assert controls_.transport.isHidden()  # (its controls along the bottom come with the hover too)
+    controls_.play_btn.click()  # pause from the player
+    assert wait_until(lambda: run_js(video.view, "document.getElementById('v').paused"), 3)
+    controls_.play_btn.click()
+    assert wait_until(lambda: not run_js(video.view, "document.getElementById('v').paused"), 3)
+    # (its live stream can't really seek: where it's asked to go is kept instead, in the mini player's script world)
+    run_js(video.view, """(() => { let at = 0; window.seeks = [];
+        Object.defineProperty(document.getElementById('v'), 'currentTime',
+                              {get: () => at, set: (t) => { at = t; window.seeks.push(t); }}); return true; })()""")
+    controls_.ahead_btn.click()  # ahead 10 seconds, then back 10
+    assert wait_until(lambda: run_js(video.view, "window.seeks") == [mini_player.SKIP], 3)
+    controls_.back_btn.click()
+    assert wait_until(lambda: run_js(video.view, "window.seeks") == [mini_player.SKIP, 0], 3)
+    assert wait_until(lambda: not controls_.next_btn.isHidden(), 3)  # the site has a next video: offered…
+    controls_.next_btn.click()
+    assert wait_until(lambda: run_js(video.view, "window.nexts", 0) == 1, 3)  # …and skipped to (the site's button)
+
+    # Resized from a corner or an edge: the video's shape kept, the far edges where they were, within its limits
+    from PyQt6.QtCore import QPoint, QRect
+    mini = player.window
+    start = mini.geometry()
+    mini.resize_from("br", start, QPoint(80, 999))
+    assert mini.width() == start.width() + 80 and abs(mini.width() / mini.height() - 16 / 9) < 0.02
+    assert mini.pos() == start.topLeft()
+    start = mini.geometry()
+    mini.resize_from("tl", start, QPoint(40, 0))  # (smaller, from the other corner: its bottom right stays)
+    assert mini.geometry().bottomRight() == start.bottomRight() and mini.width() == start.width() - 40
+    mini.resize_from("b", mini.geometry(), QPoint(0, 5000))
+    assert mini.size() == mini_player.MAX_SIZE
+    mini.resize_from("r", mini.geometry(), QPoint(-5000, 0))
+    assert mini.size() == mini_player.MIN_SIZE
+    # Let go: it glides to the nearest corner of its screen (a pretend one, off yours), and that's kept
+    screen = QRect(-6000, -4000, 1600, 1000)
+    player._screen_area = lambda: screen
+    mini.move(screen.left() + 1100, screen.top() + 150)  # (top right of the screen)
+    player.settle()
+    spot = QPoint(screen.right() + 1 - mini_player.MARGIN - mini.width(), screen.top() + mini_player.MARGIN)
+    assert wait_until(lambda: mini.pos() == spot, 2), (mini.pos(), spot)
+    assert window.store.settings[mini_player.CORNER_SETTING] == "tr"
+    assert window.store.settings[mini_player.SIZE_SETTING] == [mini.width(), mini.height()]
+    mini.move(-4000, -4000)
+
+    window.activate_tab(video)  # back to its tab: back in the page, as it was
+    assert player.tab is None and not player.window.isVisible()
+    assert video.view.parentWidget() is not player.window and video.view.isVisible()
+    assert wait_until(lambda: not run_js(video.view, "!!document.getElementById('pb-mini-style')"), 3)
+
+    window.activate_tab(other)  # away again, then closed: it stops
+    assert wait_until(lambda: player.tab is video, 5)
+    player.close()
+    assert player.tab is None and not player.window.isVisible()
+    assert wait_until(lambda: run_js(video.view, "document.getElementById('v').paused"), 3)
+
+    window.activate_tab(video)  # turned off: it stays in its tab
+    run_js(video.view, "document.getElementById('v').play(); true")
+    assert wait_until(lambda: window.tab_audio(video)[0], 5)
+    window.store.settings["mini_player_enabled"] = False
+    window.activate_tab(other)
+    pause(1)
+    assert player.tab is None and not player.window.isVisible()
+    window.store.settings["mini_player_enabled"] = True
+
+
 def test_the_window_menu_lists_the_windows_and_minimizes_the_front_one(window):
     from browser import shortcuts
     menu = next(a.menu() for a in window.menuBar().actions() if a.text() == "Window")
@@ -1724,6 +1820,25 @@ def test_a_web_panel_holds_several_sites(window, site):
     assert panel.sites == [second] and panel.current is second and panel.isVisible()
     panel.remove(second)
     assert not panel.sites and not panel.isVisible()
+
+
+def test_panels_beside_the_page_never_crush_it_in_a_small_window(window, site):
+    from browser.window import MIN_SIZE, PAGE_MIN
+    open_page(window, f"{site}/index.html")
+    size = window.size()
+    window.resize(*MIN_SIZE)
+    assert wait_until(lambda: window.width() == MIN_SIZE[0], 2)
+    panel = window.feature("web_panel").panel
+    panel.open(f"{site}/links.html")  # a panel opened in the smallest window: the window widens, the page stays usable
+    assert wait_until(lambda: window.content.width() >= PAGE_MIN and window.width() > MIN_SIZE[0], 3)
+    window.feature("page_chat").toggle()  # and another beside it: still all inside the window
+    assert wait_until(lambda: window.content.width() >= PAGE_MIN, 3)
+    chat = window.feature("page_chat").chat
+    assert panel.geometry().right() <= window.content_wrap.width() and chat.isVisible()
+    window.feature("page_chat").toggle()
+    panel.close_panel()  # both closed: it can be small again
+    assert wait_until(lambda: window.minimumWidth() == MIN_SIZE[0], 3)
+    window.resize(size)
 
 
 def test_resting_on_a_sleeping_tab_wakes_it_before_the_click(window, site):

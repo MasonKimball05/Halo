@@ -306,6 +306,66 @@ def style_traffic_lights(widget, hidden: bool, alpha: float = 1.0) -> bool:
     return True
 
 
+def round_window(widget, radius: float, border: float = 0.0) -> bool:
+    """Round a borderless window's corners (the mini player, like Arc's): its content clipped to the rounded shape by
+    Core Animation, so a web page inside is rounded too (a stylesheet's border-radius can't clip one), the window
+    see-through outside them, and its shadow following the shape. `border`: a 1pt white edge just inside, at that
+    opacity. Again after each show: Qt may set it back."""
+    if not _cocoa():
+        return False
+    window = _send(ctypes.c_void_p(int(widget.window().winId())), "window")
+    content = _send(window, "contentView") if window else None
+    if not content:
+        return False
+    _send(window, "setOpaque:", False, restype=None, argtypes=(ctypes.c_bool,))
+    clear = _send(_objc.objc_getClass(b"NSColor"), "clearColor")
+    _send(window, "setBackgroundColor:", clear, restype=None, argtypes=(ctypes.c_void_p,))
+    _send(content, "setWantsLayer:", True, restype=None, argtypes=(ctypes.c_bool,))
+    layer = _send(content, "layer")
+    if not layer:
+        return False
+    _send(layer, "setCornerRadius:", radius, restype=None, argtypes=(ctypes.c_double,))
+    _send(layer, "setMasksToBounds:", True, restype=None, argtypes=(ctypes.c_bool,))
+    if border:  # (drawn over what's in it, the page included)
+        cg = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+        cg.CGColorCreateGenericRGB.restype = ctypes.c_void_p
+        cg.CGColorCreateGenericRGB.argtypes = [ctypes.c_double] * 4
+        _send(layer, "setBorderWidth:", 1.0, restype=None, argtypes=(ctypes.c_double,))
+        _send(layer, "setBorderColor:", cg.CGColorCreateGenericRGB(1, 1, 1, border), restype=None,
+              argtypes=(ctypes.c_void_p,))
+    _send(window, "setHasShadow:", True, restype=None, argtypes=(ctypes.c_bool,))
+    _send(window, "invalidateShadow", restype=None)  # (the shadow's shape, from the rounded content)
+    return True
+
+
+def window_border(widget) -> tuple[float, float] | None:
+    """(width, opacity) of the edge round_window drew, for the tests."""
+    if not _cocoa():
+        return None
+    window = _send(ctypes.c_void_p(int(widget.window().winId())), "window")
+    layer = _send(_send(window, "contentView"), "layer") if window else None
+    if not layer:
+        return None
+    cg = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+    cg.CGColorGetAlpha.restype = ctypes.c_double
+    cg.CGColorGetAlpha.argtypes = [ctypes.c_void_p]
+    color = _send(layer, "borderColor")
+    return _send(layer, "borderWidth", restype=ctypes.c_double), round(cg.CGColorGetAlpha(color), 2) if color else 0.0
+
+
+def window_rounding(widget) -> tuple[float, bool, bool] | None:
+    """(corner radius, clipped to it, window opaque): what round_window set, for the tests."""
+    if not _cocoa():
+        return None
+    window = _send(ctypes.c_void_p(int(widget.window().winId())), "window")
+    layer = _send(_send(window, "contentView"), "layer") if window else None
+    if not layer:
+        return None
+    return (_send(layer, "cornerRadius", restype=ctypes.c_double),
+            _send(layer, "masksToBounds", restype=ctypes.c_bool),
+            _send(window, "isOpaque", restype=ctypes.c_bool))
+
+
 # --- Dock badge --------------------------------------------------------------------------------
 
 _badge = None

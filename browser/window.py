@@ -77,6 +77,8 @@ DARK_PAGE_BLANK = "#1b1b1e"  # (theme.py's page-area colour on a dark Space)
 KEEP_RUNNING = "keep_running"  # (closing the window leaves Eclipse open, on a Mac)
 AUTOPLAY_SETTING = "media_waits_for_click"  # (Settings → Privacy: videos don't play until you click)
 SIDEBAR_WIDTH = 250  # default; drag the sidebar's edge to change it
+MIN_SIZE = (640, 420)  # the window's smallest (wider while panels are open beside the page: _fit_minimum)
+PAGE_MIN = 320  # the page's narrowest
 COMPACT_SETTING = "sidebar_compact"  # (collapsed to its icons: Sidebar.set_compact)
 SIDEBAR_GAP = 12     # between the sidebar's contents and the page: all of it is the resize edge
 
@@ -94,6 +96,8 @@ def _delete(obj):
 
 
 class MainWindow(QMainWindow):
+    PAGE_MIN = PAGE_MIN  # (for features laying things out beside the page: the web panel)
+
     def __init__(self, store, profile):
         super().__init__()
         self.store = store
@@ -148,7 +152,7 @@ class MainWindow(QMainWindow):
             self.setWindowFlag(Qt.WindowType.ExpandedClientAreaHint, True)
             self.setWindowFlag(Qt.WindowType.NoTitleBarBackgroundHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
-        self.setMinimumSize(640, 420)
+        self.setMinimumSize(*MIN_SIZE)
 
         root = ThemedBackground(self)
         root.setObjectName("Root")
@@ -158,6 +162,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar(self)
         self.content = ContentFrame(self)
+        self.content.setMinimumWidth(PAGE_MIN)  # (the page, however much opens beside it: see _fit_minimum)
         self.reader = ReaderView(self, self.content)  # ⌥⌘R, over the page
         content_wrap = self.content_wrap = QWidget()  # (the page, and anything beside it: Ask About This Page)
         self.content_layout = QHBoxLayout(content_wrap)
@@ -376,6 +381,17 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.sidebar.align_with_traffic_lights)  # (its buttons sit after them now)
         else:
             self.traffic_lights.place(True)
+
+    def _fit_minimum(self):
+        """At least MIN_SIZE wide, or wider while panels are open beside the page (the web panel, Ask About This
+        Page): room for each at its narrowest and the page at PAGE_MIN, so opening one in a small window widens
+        the window rather than crushing the page (or pushing the panels off its edge)."""
+        if sip.isdeleted(self) or self._fullscreen or self.isFullScreen():
+            return
+        QApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)  # (laid out as it is now, not before)
+        width = max(MIN_SIZE[0], self.centralWidget().minimumSizeHint().width())
+        if width != self.minimumWidth():
+            self.setMinimumWidth(width)
 
     def reset_sidebar_width(self):
         self._set_sidebar_size(SIDEBAR_WIDTH)
@@ -2097,6 +2113,10 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj, event):
         kind = event.type()
+        if (kind == QEvent.Type.LayoutRequest and obj is self.content_wrap) or (
+                kind in (QEvent.Type.Show, QEvent.Type.Hide) and isinstance(obj, QWidget)
+                and obj.parentWidget() is self.content_wrap):
+            QTimer.singleShot(0, self._fit_minimum)  # (something opened or closed beside the page)
         if kind == QEvent.Type.MouseButtonPress:
             self.spread_sidebar.pressed()  # (a click on the collapsed strip: it's being used as it is)
         if kind == QEvent.Type.KeyPress and not event.isAutoRepeat():

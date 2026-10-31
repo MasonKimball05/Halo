@@ -1,0 +1,27 @@
+<html><head><title>Video Tab</title></head><body><h1>Video</h1>
+<p>Some page around the video, as on a video site.</p>
+<video id="v" width="320" height="180" playsinline></video>
+<button class="ytp-next-button" onclick="window.nexts = (window.nexts || 0) + 1">Next</button>
+<script>
+// A video with sound, made here (nothing to download): frames drawn on a canvas, and the quiet test tone as its sound
+const canvas = document.createElement('canvas');
+canvas.width = 320; canvas.height = 180;
+const g = canvas.getContext('2d');
+let frame = 0;
+setInterval(() => {
+  frame++;
+  g.fillStyle = `hsl(${frame * 4 % 360}, 70%, 50%)`;
+  g.fillRect(0, 0, 320, 180);
+  g.fillStyle = 'white'; g.font = '40px sans-serif'; g.fillText(String(frame), 20, 100);
+}, 33);
+const stream = canvas.captureStream(30);
+const sound = new AudioContext();
+const tone = new Audio('tone.wav'); tone.loop = true;
+const out = sound.createMediaStreamDestination();
+sound.createMediaElementSource(tone).connect(out);
+stream.addTrack(out.stream.getAudioTracks()[0]);
+const video = document.getElementById('v');
+video.srcObject = stream;
+tone.play();
+video.play();
+</script></body></html>

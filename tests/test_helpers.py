@@ -206,3 +206,15 @@ def test_memory_says_how_short_it_is(monkeypatch):
         assert memory.pressure() == level
     monkeypatch.setattr(memory, "_windows_status", lambda: None)
     assert memory.pressure() == memory.NORMAL  # (can't tell: as if fine)
+
+
+def test_which_pages_have_a_live_preview():
+    from browser.tab_preview import live_kind
+    assert live_kind("https://mail.google.com/mail/u/0/") == "mail"
+    assert live_kind("https://calendar.google.com/calendar/r") == "calendar"
+    assert live_kind("https://github.com/notifications?query=is%3Aunread") == "github"
+    assert live_kind("https://github.com/MasonKimball05/Eclipse") is None  # (a repo: its picture)
+    assert live_kind("https://app.slack.com/client/T1/C2") == "slack"
+    assert live_kind("https://www.youtube.com/playlist?list=WL") == "youtube"
+    assert live_kind("https://www.youtube.com/playlist?list=PL123") is None  # (someone's playlist)
+    assert live_kind("https://www.youtube.com/watch?v=abc") is None

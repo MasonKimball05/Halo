@@ -783,6 +783,23 @@ def test_a_little_window_fades_in_and_out(window, site):
     assert wait_until(lambda: closed, 1.5)  # …then gone
 
 
+def test_the_command_bar_stays_inside_a_short_window(window, site):
+    from browser.command_bar import MIN_ROWS
+    from browser.window import MIN_SIZE
+    open_page(window, f"{site}/index.html")
+    size = window.size()
+    window.resize(*MIN_SIZE)
+    assert wait_until(lambda: window.height() == MIN_SIZE[1], 2)
+    window.open_command_bar()
+    bar = window.command_bar
+    assert wait_until(lambda: bar.list.count() > 0, 3)
+    pause(0.3)
+    assert bar.panel.geometry().bottom() < bar.height()  # (its list scrolls rather than running off the bottom)
+    assert bar.list.height() >= MIN_ROWS * 40
+    bar.hide()
+    window.resize(size)
+
+
 def test_command_bar_results_have_text_for_voiceover(window, site):
     window.store.record_history("https://github.com/", "GitHub")
     open_page(window, f"{site}/index.html")
@@ -1073,6 +1090,29 @@ def test_resting_on_a_mail_tab_shows_its_newest_unread(window, site, monkeypatch
     pause(0.3)
     assert not preview.live.isVisible()
     preview.leave(other)
+
+
+def test_github_slack_and_youtube_tabs_show_whats_new_in_their_preview(window, site, monkeypatch):
+    from browser import tab_preview
+    preview = window.tab_preview
+    kinds = {"github.html": "github", "slack.html": "slack", "youtube.html": "youtube"}
+    monkeypatch.setattr(tab_preview, "live_kind", lambda url: next((k for f, k in kinds.items() if f in url), None))
+    tabs = {name: open_page(window, f"{site}/{name}") for name in kinds}
+    open_page(window, f"{site}/index.html")
+    expect = {"github.html": ("NOTIFICATIONS", ["octo/engine — Fix the boiler", "octo/compiler — Release 1.0"],
+                              "Already seen"),  # (the unread ones)
+              "slack.html": ("UNREAD", ["design · 2 mentions", "general"], "quiet"),
+              "youtube.html": ("WATCH LATER", ["How engines work — Steam Club", "Compilers in 10 minutes — Code Talk"],
+                               None)}
+    for name, (heading, lines, not_there) in expect.items():
+        row = next(r for r in window.sidebar.today.rows if r.tab is tabs[name])
+        preview.dismiss()
+        preview.hover(row)
+        assert wait_until(lambda: preview.live.isVisible() and preview.row is row, 3), name
+        words = preview.live.text()
+        assert heading in words and all(line in words for line in lines), (name, words)
+        assert not_there is None or not_there not in words
+        preview.leave(row)
 
 
 def test_resting_on_a_tab_shows_its_preview(window, site):

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayou
 
 import qtawesome as qta
 
+from .mini_player import NEXT_BUTTON
 from .models import display_host
 from .features import Feature
 from .theme import plain_tip
@@ -64,9 +65,7 @@ FIND = """
     document.dispatchEvent(new Event('pb-media'));
     return root.getAttribute('data-pb-media') === 'paused';
   };
-  const next = ['.ytp-next-button', '[data-testid="control-button-skip-forward"]', '.skipControl__next',
-                'button[aria-label="Next"]', 'button[aria-label="Next track"]', 'ytmusic-player-bar .next-button']
-               .map((s) => document.querySelector(s)).find((b) => b && b.offsetParent !== null);
+  const next = """ + NEXT_BUTTON + """;
 """
 INFO = "(() => {" + FIND + """
   const meta = navigator.mediaSession && navigator.mediaSession.metadata;

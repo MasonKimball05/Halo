@@ -11,11 +11,22 @@ from .shortcuts import for_here
 from .motion import FadesIn
 from .theme import quiet_scrollbars, stylesheet
 
-EDITION = 25
+EDITION = 26
 SETTING = "whats_new_seen"
 
 NOTES = """
 ## This week
+
+- **A better mini player**: the floating window a video keeps playing in when you leave its tab has rounded
+  corners and a soft edge, like Arc's, and player controls along the bottom when you point at it: back or ahead
+  10 seconds, play/pause, and the next video where the site has one. Drag an edge to resize it; let go and it
+  glides to the nearest corner of the screen, and it remembers both.
+- **More at a glance**: rest on GitHub's notifications page for your unread notifications, on Slack for your
+  unread channels and mentions, or on YouTube's Watch Later list for what's next, as with Gmail and Calendar.
+- **Small windows**: opening the web panel or Ask About This Page in a small window widens it rather than
+  squeezing the page, and ⌘T fits a short window, scrolling its results.
+
+## Lately
 
 - **Switching to or from a Space with no tab open**: the page you leave fades into the start view, and the start
   view into the page you arrive at, instead of a blank moment between.
@@ -34,9 +45,6 @@ NOTES = """
   stays loaded. ⌥⌘B shows or hides it.
 - **Smoother all round**: Ask About This Page fades in and out beside the page, the mini player's and Split View's
   buttons fade as you point at them, and the Up Next card no longer makes the sidebar jump.
-
-## Lately
-
 - **Swiping between Spaces, smoother still**: a swipe goes on to the next Space without needing to come halfway,
   it never stalls partway, fingers down again catch a swipe still settling, and with a page open the page you
   leave fades into the next instead of flashing.

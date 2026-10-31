@@ -7,7 +7,7 @@
 import html
 
 from PyQt6 import sip
-from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer
+from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer, QUrl, QUrlQuery
 from PyQt6.QtGui import QFontMetrics, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
@@ -58,13 +58,47 @@ LIVE = {
             const text = (chip.querySelector('.XuJrye') || chip).textContent || chip.getAttribute('aria-label') || '';
             return text.split(',').slice(0, 2).map(s => s.trim()).filter(Boolean).join(' · ');
         }).filter((text, i, all) => text && all.indexOf(text) === i).slice(0, %d)"""),
+    # GitHub's notifications page: the unread ones (all of them, if it marks none), repo and title
+    "github": ("Notifications", r"""
+        (() => {
+            const items = [...document.querySelectorAll('.notifications-list-item')];
+            const unread = items.filter(item => item.classList.contains('notification-unread'));
+            return (unread.length ? unread : items).slice(0, %d).map(item => {
+                const title = item.querySelector('.markdown-title');
+                const repo = item.querySelector('.f6 .text-bold, .f6');
+                const where = repo && repo.textContent.trim().split(/\s+/)[0];
+                return [where, title && title.textContent.trim()].filter(Boolean).join(' — ');
+            }).filter(Boolean);
+        })()"""),
+    # Slack: the channels and messages with something unread, and how many mention you
+    "slack": ("Unread", r"""
+        [...document.querySelectorAll('.p-channel_sidebar__channel--unread')].slice(0, %d).map(channel => {
+            const name = channel.querySelector('.p-channel_sidebar__name');
+            const badge = channel.querySelector('.p-channel_sidebar__badge');
+            const mentions = badge && parseInt(badge.textContent, 10);
+            return name && (name.textContent.trim() +
+                (mentions ? ` · ${mentions} mention${mentions === 1 ? '' : 's'}` : ''));
+        }).filter(Boolean)"""),
+    # YouTube's Watch Later list: the top of it, title and channel
+    "youtube": ("Watch later", r"""
+        [...document.querySelectorAll('ytd-playlist-video-renderer')].slice(0, %d).map(video => {
+            const title = video.querySelector('#video-title');
+            const channel = video.querySelector('ytd-channel-name a, ytd-channel-name #text');
+            return [title && title.textContent.trim(), channel && channel.textContent.trim()]
+                .filter(Boolean).join(' — ');
+        }).filter(Boolean)"""),
 }
 
 
 def live_kind(url: str) -> str | None:
-    """"mail" or "calendar" for the pages with a live preview, else None."""
-    host = display_host(url)
-    return {"mail.google.com": "mail", "calendar.google.com": "calendar"}.get(host)
+    """Which live preview a page has ("mail", "calendar", "github", "slack", "youtube"), else None."""
+    address = QUrl(url)
+    host, path = display_host(url), address.path()
+    if host == "github.com" and path.startswith("/notifications"):
+        return "github"
+    if host == "youtube.com" and path == "/playlist" and QUrlQuery(address).queryItemValue("list") == "WL":
+        return "youtube"
+    return {"mail.google.com": "mail", "calendar.google.com": "calendar", "app.slack.com": "slack"}.get(host)
 
 
 def memory_text(browser, tab) -> str:
